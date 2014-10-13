@@ -13,12 +13,6 @@ const int multiplexBit3Pin = 5;  // Pin that controls bit 0 of the multiplexer
 
 const int inputCount = 8;  // Number of inputs we are reading
 
-// Thresholds for input on each pin. >= this value is ON, < this value is OFF.
-int thresholds[inputCount] = { 400, 400, 400, 400, 400, 400, 400, 400 };
-
-// Current values for each pin (on or off).
-byte current[inputCount];
-
 // Read an analog value from a multiplexed input on a 
 // 74HC5067 multiplexer IC.
 int multiplexedAnalogRead(int multiplexedInput)
@@ -47,21 +41,12 @@ void loop() {
         // Read analog input value.
         int value = multiplexedAnalogRead(i);
         
-        // Use threshold to convert into ON or OFF.
-        byte newInput = (value >= thresholds[i] ? 1 : 0);
         
-        // If different than last value, send notification.
-        if (newInput != current[i]) {
-            //Serial.print(i);
-            //Serial.print(newInput ? '+' : '-');
-            //Serial.println();
-            if (newInput){
-              Serial.print(i);
-            }
-        }
-        current[i] = newInput;
+        Serial.print(i);
+        Serial.print(": ");
+        Serial.println(value);
     }  
 
-    // wait 2 milliseconds before the next loop
-    delay(2);                     
+    // wait 3 seconds before the next loop
+    delay(3000);                     
 }
