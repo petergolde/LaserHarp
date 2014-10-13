@@ -21,7 +21,7 @@ namespace LaserHarp
         SerialPort serialPort;
         bool connected = false;
 
-        List<SoundEffect> noteSoundEffects = new List<SoundEffect>();
+        List<SoundEffectInstance> noteSoundEffects = new List<SoundEffectInstance>();
         KeyboardState oldKeyboardState = Keyboard.GetState();
         string[] notes = { "Sounds/piano-0g", 
                             "Sounds/piano-a",
@@ -77,11 +77,14 @@ namespace LaserHarp
  	        string buffer = serialPort.ReadExisting();
             foreach (char inputChar in buffer.ToCharArray())
             {
-                int note = inputChar - '0';
-                // if we receive a number that is in the range of our sounds... play it
-                if (note >= 0 && note < this.noteSoundEffects.Count)
-                {
-                    this.noteSoundEffects[note].Play();
+                int note;
+                if (inputChar >= 'A' && inputChar <= 'H') {
+                    note = inputChar - 'A';
+                    UpdateSound(note, true);
+                }
+                else if (inputChar >= 'a' && inputChar <= 'h') {
+                    note = inputChar - 'a';
+                    UpdateSound(note, false);
                 }
             }
         } 
@@ -93,7 +96,7 @@ namespace LaserHarp
             foreach (var note in notes)
             {
                 SoundEffect noteSoundEffect = Content.Load<SoundEffect>(note);
-                this.noteSoundEffects.Add(noteSoundEffect);
+                this.noteSoundEffects.Add(noteSoundEffect.CreateInstance());
             }
         }
 
@@ -108,14 +111,30 @@ namespace LaserHarp
                 this.Exit();
 
             KeyboardState newKeyboardState = Keyboard.GetState();
-            for (Keys key = Keys.NumPad0; key <= Keys.NumPad7; key++ )
+            for (Keys key = Keys.NumPad1; key <= Keys.NumPad0; key++)
             {
                 if (newKeyboardState.IsKeyDown(key)  && !oldKeyboardState.IsKeyDown(key))
-                    this.noteSoundEffects[key - Keys.NumPad0].Play();
+                    UpdateSound(key - Keys.NumPad1, true);
+                else if (!newKeyboardState.IsKeyDown(key) && oldKeyboardState.IsKeyDown(key))
+                    UpdateSound(key - Keys.NumPad1, false);
+            }
+            for (Keys key = Keys.D1; key <= Keys.D8; key++) {
+                if (newKeyboardState.IsKeyDown(key) && !oldKeyboardState.IsKeyDown(key))
+                    UpdateSound(key - Keys.D1, true);
+                else if (!newKeyboardState.IsKeyDown(key) && oldKeyboardState.IsKeyDown(key))
+                    UpdateSound(key - Keys.D1, false);
             }
             oldKeyboardState = newKeyboardState;
 
             base.Update(gameTime);
+        }
+
+        private void UpdateSound(int note, bool on)
+        {
+            if (on)
+                this.noteSoundEffects[note].Play();
+            else
+                this.noteSoundEffects[note].Stop();
         }
 
         protected override void Draw(GameTime gameTime)
