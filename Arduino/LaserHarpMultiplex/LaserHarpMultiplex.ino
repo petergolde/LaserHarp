@@ -31,6 +31,76 @@ int multiplexedAnalogRead(int multiplexedInput)
     return analogRead(analogInPin);
 }
 
+// Pin for status LED.
+const int ledPin = 9;
+
+// Type of LED modes.
+const byte LED_ON = 0; // on solid
+const byte LED_OFF = 1; // off solid
+const byte LED_SLOW = 2; // slow blink
+const byte LED_FAST = 3; // fast blink
+const byte LED_NUMBER = 4; // fast blink a number of times, then off for a pause, then repeat.
+
+const long SLOW_MILLIS = 600; // on and off time for slow blink
+const long FAST_MILLIS = 300; // on and off time for fast blink and count
+const long DELAY_MILLIS = 3500; // delay between counts.
+
+int lastLed = LOW;
+long lastLedChangeTime;
+byte ledMode;  // LED_SOLID, LED_SLOW, LED_FAST or LED_NUMBER
+byte ledNumber; // if LED_NUMBER, number of fast blinks
+byte ledCountSoFar; // number of fast blinks so far.
+
+void setLedMode(byte mode, byte number)
+{
+  ledMode = mode;
+  ledNumber = number;
+  updateLed();
+}
+
+void updateLed()
+{
+  long currentTime = millis();
+  
+  if (ledMode == LED_ON) {
+    digitalWrite(ledPin, HIGH);
+    lastLed = HIGH;
+  }
+  else if (ledMode == LED_OFF) {
+    digitalWrite(ledPin, LOW);
+    lastLed = LOW;
+  }
+  else if (ledMode == LED_SLOW || ledMode == LED_FAST) {
+    if (currentTime - lastLedChangeTime > (ledMode == LED_SLOW ? SLOW_MILLIS : FAST_MILLIS)) {
+      lastLed = (lastLed == HIGH) ? LOW : HIGH;
+      digitalWrite(ledPin, lastLed);
+      lastLedChangeTime = currentTime;
+    }
+  }
+  else if (ledMode == LED_NUMBER) {
+    if (ledCountSoFar == 0) {
+      if (currentTime - lastLedChangeTime > DELAY_MILLIS) {
+        lastLed = (lastLed == HIGH) ? LOW : HIGH;
+        digitalWrite(ledPin, lastLed);
+        lastLedChangeTime = currentTime;
+        ++ledCountSoFar;
+      }
+    }
+    else {
+      if (currentTime - lastLedChangeTime > FAST_MILLIS) {
+        lastLed = (lastLed == HIGH) ? LOW : HIGH;
+        digitalWrite(ledPin, lastLed);
+        lastLedChangeTime = currentTime;
+        if (lastLed == LOW)      
+          ++ledCountSoFar;
+      }
+ 
+      if (ledCountSoFar > ledNumber)
+        ledCountSoFar = 0;
+    }
+  }
+}
+
 void setup() {
   // initialize serial communications at 57600 bps:
   Serial.begin(57600); 
@@ -40,10 +110,16 @@ void setup() {
   pinMode(multiplexBit1Pin, OUTPUT);
   pinMode(multiplexBit2Pin, OUTPUT);
   pinMode(multiplexBit3Pin, OUTPUT);
+  pinMode(ledPin, OUTPUT);
+  
+  setLedMode(LED_ON, 0);
 }
 
 void loop() {
+    updateLed();
+
     for (int i = 0; i < inputCount; ++i) {
+      
         // Read analog input value.
         int value = multiplexedAnalogRead(i);
         
