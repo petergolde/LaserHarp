@@ -1,5 +1,19 @@
 /*
-  Analog input, serial output
+  Laser Harp monitoring via Arduino.
+  
+  Monitors the inputs of 8 photoresistors that detect lasers, multiplexed via
+  a 74HC5067 IC and read by the Arduino analog input.
+  
+  Sends output via serial with the following format:
+    57600 baud, 8 data bits, 1 stop.
+    
+    Sends "~" to start, indicating that data follows.
+    While monitoring, sends "~" character every second as a heartbeat.
+    Sends character "A" - "H" when laser beam is interrupted.
+    Sends character "a" - "h" when laser beam is restored.
+    
+    Sends character "@" to indicate that debugging information is being output. After
+    "@" is received, all input should be ignored until a "~" is received.
  */
 
 // These constants won't change.  They're used to give names
@@ -11,10 +25,20 @@ const int multiplexBit1Pin = 3;  // Pin that controls bit 0 of the multiplexer
 const int multiplexBit2Pin = 4;  // Pin that controls bit 0 of the multiplexer
 const int multiplexBit3Pin = 5;  // Pin that controls bit 0 of the multiplexer
 
-const int inputCount = 8;  // Number of inputs we are reading
+// Pin for status LED.
+const int ledPin = 9;
+
+// Pin for turning lasers on/off
+const int laserPin = 8;
+
+const int inputCount = 8;  // Number of inputs we are reading. Can be up to 16.
 
 // Thresholds for input on each pin. >= this value is ON, < this value is OFF.
-int thresholds[inputCount] = { 400, 400, 400, 400, 400, 400, 400, 400 };
+// These are set in the power-on calibration routine.
+int thresholds[inputCount];
+
+// Values during calibration.
+int calibrateMin[inputCount], calibrateMax[inputCount];
 
 // Current values for each pin (on or off).
 byte current[inputCount];
@@ -30,9 +54,6 @@ int multiplexedAnalogRead(int multiplexedInput)
     delayMicroseconds(10);  // delay 10 microseconds to allow multiplexer to stabilize.
     return analogRead(analogInPin);
 }
-
-// Pin for status LED.
-const int ledPin = 9;
 
 // Type of LED modes.
 const byte LED_ON = 0; // on solid
@@ -101,6 +122,110 @@ void updateLed()
   }
 }
 
+void setLasers(boolean on)
+{
+    digitalWrite(laserPin, on ? HIGH : LOW);
+}
+
+void gatherCalibrationData()
+{
+  long start = millis();
+  
+  for (int i = 0; i < inputCount; ++i) {
+    calibrateMin[i] = 1023;
+    calibrateMax[i] = 0;
+  }
+  
+  while (millis() - start < 1500) {
+    for (int i = 0; i < inputCount; ++i) {
+      int value = multiplexedAnalogRead(i);
+      if (value < calibrateMin[i])
+        calibrateMin[i] = value;
+      if (value > calibrateMax[i])
+        calibrateMax[i] = value;
+        
+      delay(1);
+    }
+    
+    updateLed();
+  }
+}
+
+// Display the range of calibration data that was read.
+void displayCalibrationData()
+{
+  for (int i = 0; i < inputCount; ++i) {
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.print(calibrateMin[i]);
+    Serial.print(" to ");
+    Serial.print(calibrateMax[i]);
+    Serial.println();
+  }
+}
+
+// If the gap in reading between on and off is less than this gap, signal an error.
+const int minCalibrationGap = 60;
+
+// Calibrate the photoresistor thresholds. Turn the lasers ON, and read
+// the photoresistors, keeping the lowest values detected.
+// Turn the lasers OFF, read the photoresistors, keeping the highest values detected.
+// Put the threshold halfway between those values. If the gap between on and off is
+// less than "minCalibrationGap", indicate an error by blinking the status LED the 
+// number of the laser that is in error.
+void calibrate()
+{
+  int minLasersOn[inputCount], maxLasersOff[inputCount];
+  
+  // Blink LED slowly to indicate calibration going on.
+  setLedMode(LED_SLOW, 0);
+  
+  Serial.println("@"); // Indicate that debugging output follows; do not interpret as data.
+  Serial.println("Calibrating light sensors...");
+  
+  setLasers(true);
+  delay(400);  // let lasers get fully powered on.
+  gatherCalibrationData();
+  Serial.println("Lasers on:");
+  displayCalibrationData();
+  for (int i = 0; i < inputCount; ++i)
+    minLasersOn[i] = calibrateMin[i];
+    
+  setLasers(false);
+  delay(400);  // let lasers get fully powered off.
+  gatherCalibrationData();
+  Serial.println("Lasers off:");
+  displayCalibrationData();
+  for (int i = 0; i < inputCount; ++i)
+    maxLasersOff[i] = calibrateMax[i];
+ 
+  setLasers(true);
+  
+  Serial.println("Calibration complete; thresholds are:");
+  int error = -1; // Set to first laser we can't calibrate.
+  for (int i = 0; i < inputCount; ++i) {
+    thresholds[i] = (minLasersOn[i] + maxLasersOff[i]) / 2;
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.print(thresholds[i]);
+    
+    if (minLasersOn[i] - maxLasersOff[i] < minCalibrationGap) {
+      Serial.print("  CALIBRATION FAILED!");
+      if (error == -1)
+        error = i;
+    }
+    Serial.println();
+  }  
+  
+  // If we had a calibration error, blink the status LED to show laser with problem.
+  if (error >= 0)
+    setLedMode(LED_NUMBER, error + 1);
+  else
+    setLedMode(LED_ON, 0);
+  
+  Serial.println("~");  // Transition back to output data.
+}
+
 void setup() {
   // initialize serial communications at 57600 bps:
   Serial.begin(57600); 
@@ -111,12 +236,24 @@ void setup() {
   pinMode(multiplexBit2Pin, OUTPUT);
   pinMode(multiplexBit3Pin, OUTPUT);
   pinMode(ledPin, OUTPUT);
+  pinMode(laserPin, OUTPUT);
   
   setLedMode(LED_ON, 0);
+  calibrate();
+  setLasers(true);
 }
 
+const long heartbeat = 1000;  // milliseconds between heartbeats.
 void loop() {
+    long lastTimeHeartbeat, currentTime;
+    
     updateLed();
+    
+    currentTime = millis();
+    if (currentTime - lastTimeHeartbeat > heartbeat) {
+      lastTimeHeartbeat = currentTime;
+      Serial.println('~');
+    }
 
     for (int i = 0; i < inputCount; ++i) {
       
@@ -128,16 +265,14 @@ void loop() {
         
         // If different than last value, send notification.
         if (newInput != current[i]) {
-            //Serial.print(i);
-            //Serial.print(newInput ? '+' : '-');
-            //Serial.println();
-            if (newInput){
-              Serial.print(i);
-            }
-        }
+            if (newInput)
+              Serial.print('a' + i); // HIGH means laser detected -> interruption OFF
+            else
+              Serial.print('A' + i); // LOW means laser not detected -> interruption ON
+         }
         current[i] = newInput;
     }  
 
-    // wait 2 milliseconds before the next loop
-    delay(2);                     
+    // wait 1 milliseconds before the next loop
+    delay(1);                     
 }
