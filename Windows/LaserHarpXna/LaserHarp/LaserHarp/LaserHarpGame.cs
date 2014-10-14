@@ -10,6 +10,7 @@ using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Media;
 using System.Diagnostics;
 using System.IO.Ports;
+using SysWinForms = System.Windows.Forms;
 
 namespace LaserHarp
 {
@@ -20,7 +21,11 @@ namespace LaserHarp
 
         SerialPort serialPort;
         bool connected = false;
+        bool heartbeatDetected = false;
 
+        MainForm mainForm;
+
+        const int numberOfNotes = 8;
         List<SoundEffectInstance> noteSoundEffects = new List<SoundEffectInstance>();
         KeyboardState oldKeyboardState = Keyboard.GetState();
         string[] notes = { "Sounds/piano-0g", 
@@ -43,7 +48,12 @@ namespace LaserHarp
 
         protected override void Initialize()
         {
-            // TODO: Add your initialization logic here
+            SysWinForms.Form gameWindowForm = (SysWinForms.Form)SysWinForms.Form.FromHandle(this.Window.Handle);
+            gameWindowForm.Shown += new EventHandler(gameWindowForm_Shown);
+
+            mainForm = new MainForm();
+            mainForm.HandleDestroyed += new EventHandler(mainForm_HandleDestroyed);
+            mainForm.Show();
 
             string serialPortName = SerialPort.GetPortNames().FirstOrDefault();
             if (!string.IsNullOrEmpty(serialPortName))
@@ -55,6 +65,7 @@ namespace LaserHarp
                     serialPort.DataReceived += serialPort_DataReceived;
                     serialPort.ErrorReceived += serialPort_ErrorReceived;
                     connected = true;
+                    heartbeatDetected = false;
                 }
                 catch (Exception)
                 {
@@ -65,12 +76,20 @@ namespace LaserHarp
             base.Initialize();
         }
 
+        void mainForm_HandleDestroyed(object sender, EventArgs e)
+        {
+            this.Exit();
+        }
+
+        void gameWindowForm_Shown(object sender, EventArgs e)
+        {
+            ((SysWinForms.Form)sender).Hide();
+        }
+
         void serialPort_ErrorReceived(object sender, SerialErrorReceivedEventArgs e)
         {
             this.connected = false;
         }
-
-        
 
         void serialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
@@ -78,11 +97,19 @@ namespace LaserHarp
             foreach (char inputChar in buffer.ToCharArray())
             {
                 int note;
-                if (inputChar >= 'A' && inputChar <= 'H') {
+                if (inputChar == '~') {
+                    // begin monitoring for real data
+                    heartbeatDetected = true;
+                }
+                else if (inputChar == '@') {
+                    // debug input being printed, do not interpret as data
+                    heartbeatDetected = false;
+                }
+                else if (heartbeatDetected && inputChar >= 'A' && inputChar <= 'H') {
                     note = inputChar - 'A';
                     UpdateSound(note, true);
                 }
-                else if (inputChar >= 'a' && inputChar <= 'h') {
+                else if (heartbeatDetected && inputChar >= 'a' && inputChar <= 'h') {
                     note = inputChar - 'a';
                     UpdateSound(note, false);
                 }
@@ -93,10 +120,13 @@ namespace LaserHarp
         {
             spriteBatch = new SpriteBatch(GraphicsDevice);
         
-            foreach (var note in notes)
+            SoundEffect noteSoundEffect = Content.Load<SoundEffect>(notes[0]);
+
+            for (int i = 0; i < numberOfNotes; ++i)
             {
-                SoundEffect noteSoundEffect = Content.Load<SoundEffect>(note);
-                this.noteSoundEffects.Add(noteSoundEffect.CreateInstance());
+                SoundEffectInstance noteInstance = noteSoundEffect.CreateInstance();
+                noteInstance.Pitch = i * (1.0F / 12.0F);
+                this.noteSoundEffects.Add(noteInstance);
             }
         }
 
@@ -111,7 +141,7 @@ namespace LaserHarp
                 this.Exit();
 
             KeyboardState newKeyboardState = Keyboard.GetState();
-            for (Keys key = Keys.NumPad1; key <= Keys.NumPad0; key++)
+            for (Keys key = Keys.NumPad1; key <= Keys.NumPad8; key++)
             {
                 if (newKeyboardState.IsKeyDown(key)  && !oldKeyboardState.IsKeyDown(key))
                     UpdateSound(key - Keys.NumPad1, true);
@@ -131,10 +161,12 @@ namespace LaserHarp
 
         private void UpdateSound(int note, bool on)
         {
-            if (on)
-                this.noteSoundEffects[note].Play();
-            else
-                this.noteSoundEffects[note].Stop();
+            if (note >= 0 && note < noteSoundEffects.Count) {
+                if (on)
+                    this.noteSoundEffects[note].Play();
+                else
+                    this.noteSoundEffects[note].Stop();
+            }
         }
 
         protected override void Draw(GameTime gameTime)
