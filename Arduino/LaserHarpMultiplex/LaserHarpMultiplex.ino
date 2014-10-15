@@ -29,7 +29,7 @@ const int multiplexBit3Pin = 5;  // Pin that controls bit 0 of the multiplexer
 const int ledPin = 9;
 
 // Pin for turning lasers on/off
-const int laserPin = 8;
+const int laserPin = 10;
 
 const int inputCount = 8;  // Number of inputs we are reading. Can be up to 16.
 
@@ -76,6 +76,8 @@ void setLedMode(byte mode, byte number)
 {
   ledMode = mode;
   ledNumber = number;
+  lastLed = LOW;
+  digitalWrite(ledPin, LOW);
   updateLed();
 }
 
@@ -155,7 +157,7 @@ void gatherCalibrationData()
 void displayCalibrationData()
 {
   for (int i = 0; i < inputCount; ++i) {
-    Serial.print(i);
+    Serial.print(i+1);
     Serial.print(": ");
     Serial.print(calibrateMin[i]);
     Serial.print(" to ");
@@ -205,11 +207,12 @@ void calibrate()
   int error = -1; // Set to first laser we can't calibrate.
   for (int i = 0; i < inputCount; ++i) {
     thresholds[i] = (minLasersOn[i] + maxLasersOff[i]) / 2;
-    Serial.print(i);
+    Serial.print(i+1);
     Serial.print(": ");
     Serial.print(thresholds[i]);
     
     if (minLasersOn[i] - maxLasersOff[i] < minCalibrationGap) {
+      thresholds[i] = -1;
       Serial.print("  CALIBRATION FAILED!");
       if (error == -1)
         error = i;
@@ -244,19 +247,24 @@ void setup() {
 }
 
 const long heartbeat = 1000;  // milliseconds between heartbeats.
+
+long lastTimeHeartbeat, currentTime;
+
 void loop() {
-    long lastTimeHeartbeat, currentTime;
     
     updateLed();
     
     currentTime = millis();
     if (currentTime - lastTimeHeartbeat > heartbeat) {
       lastTimeHeartbeat = currentTime;
-      Serial.println('~');
+      Serial.println("~");
     }
 
     for (int i = 0; i < inputCount; ++i) {
-      
+        // Ignore inputs that failed calibration.
+        if (thresholds[i] < 0)
+            continue;
+            
         // Read analog input value.
         int value = multiplexedAnalogRead(i);
         
@@ -266,9 +274,9 @@ void loop() {
         // If different than last value, send notification.
         if (newInput != current[i]) {
             if (newInput)
-              Serial.print('a' + i); // HIGH means laser detected -> interruption OFF
+              Serial.write('a' + i); // HIGH means laser detected -> interruption OFF
             else
-              Serial.print('A' + i); // LOW means laser not detected -> interruption ON
+              Serial.write('A' + i); // LOW means laser not detected -> interruption ON
          }
         current[i] = newInput;
     }  
