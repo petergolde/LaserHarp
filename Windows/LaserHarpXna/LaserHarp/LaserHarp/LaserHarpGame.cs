@@ -28,7 +28,8 @@ namespace LaserHarp
 
         const int numberOfNotes = 8;
         SoundToPlay[] sounds;
-        List<SoundEffectInstance> noteSoundEffects = new List<SoundEffectInstance>();
+        List<SoundEffect> noteSoundEffects = new List<SoundEffect>();
+        List<SoundEffectInstance> noteSoundEffectInstances = new List<SoundEffectInstance>();
         KeyboardState oldKeyboardState = Keyboard.GetState();
 
         public LaserHarpGame()
@@ -159,45 +160,57 @@ namespace LaserHarp
         {
             sounds = mainForm.Sounds;
             noteSoundEffects.Clear();
+            noteSoundEffectInstances.Clear();
             for (int i = 0; i < numberOfNotes; ++i) {
                 if (sounds[i] != null) {
                     SoundEffect effect;
                     using (Stream stm = new FileStream(sounds[i].soundFile.fileName, FileMode.Open)) {
                         effect = SoundEffect.FromStream(stm);
                     }
-                    SoundEffectInstance noteInstance = effect.CreateInstance();
-                    noteInstance.Pitch = sounds[i].pitchShiftInSemitones * (1.0F / 12.0F);
-                    noteInstance.Volume = sounds[i].volume;
-                    this.noteSoundEffects.Add(noteInstance);
+                    this.noteSoundEffects.Add(effect);
+                    this.noteSoundEffectInstances.Add(CreateSoundEffectInstance(i));
                 }
                 else {
                     this.noteSoundEffects.Add(null);
+                    this.noteSoundEffectInstances.Add(null);
                 }
             }
 
             // Start all the continuous looping notes so they are syncronized.
             for (int i = 0; i < numberOfNotes; ++i) {
                 if (sounds[i] != null && sounds[i].playMode == PlayMode.ContinuousLoop) {
-                    noteSoundEffects[i].Volume = 0;
-                    noteSoundEffects[i].IsLooped = true;
-                    noteSoundEffects[i].Play();
+                    noteSoundEffectInstances[i].Volume = 0;
+                    noteSoundEffectInstances[i].IsLooped = true;
+                    noteSoundEffectInstances[i].Play();
                 }
                 if (sounds[i] != null && sounds[i].playMode == PlayMode.Looping) {
-                    noteSoundEffects[i].IsLooped = true;
+                    noteSoundEffectInstances[i].IsLooped = true;
                 }
             }
+        }
+
+        SoundEffectInstance CreateSoundEffectInstance(int note)
+        {
+            SoundEffectInstance noteInstance = noteSoundEffects[note].CreateInstance();
+            noteInstance.Pitch = sounds[note].pitchShiftInSemitones * (1.0F / 12.0F);
+            noteInstance.Volume = sounds[note].volume;
+            return noteInstance;
         }
 
         void UnloadSounds()
         {
             for (int i = 0; i < noteSoundEffects.Count; ++i) {
+                if (noteSoundEffectInstances[i] != null) {
+                    noteSoundEffectInstances[i].Stop();
+                    noteSoundEffectInstances[i].Dispose();
+                }
                 if (noteSoundEffects[i] != null) {
-                    noteSoundEffects[i].Stop();
                     noteSoundEffects[i].Dispose();
                 }
             }
 
             noteSoundEffects.Clear();
+            noteSoundEffectInstances.Clear();
         }
 
 
@@ -229,32 +242,36 @@ namespace LaserHarp
         {
             if (connected && note >= 0 && note < noteSoundEffects.Count && this.noteSoundEffects[note] != null) {
                 PlayMode mode = sounds[note].playMode;
-                SoundEffectInstance soundEffect = this.noteSoundEffects[note];
+                SoundEffect soundEffect = this.noteSoundEffects[note];
+                SoundEffectInstance soundEffectInstance = noteSoundEffectInstances[note];
                 switch (mode) {
                     case PlayMode.Once:
-                        if (on)
-                            soundEffect.Play();
+                        if (on) {
+                            // Create a new sound effect instance each time, so that multiple can play at once.
+                            soundEffectInstance = CreateSoundEffectInstance(note);
+                            soundEffectInstance.Play();
+                        }
                         break;
 
                     case PlayMode.OnOff:
                         if (on)
-                            soundEffect.Play();
+                            soundEffectInstance.Play();
                         else
-                            soundEffect.Stop();
+                            soundEffectInstance.Stop();
                         break;
 
                     case PlayMode.Looping:
                         if (on)
-                            soundEffect.Play();
+                            soundEffectInstance.Play();
                         else
-                            soundEffect.Stop();
+                            soundEffectInstance.Stop();
                         break;
 
                     case PlayMode.ContinuousLoop:
                         if (on)
-                            soundEffect.Volume = sounds[note].volume;
+                            soundEffectInstance.Volume = sounds[note].volume;
                         else
-                            soundEffect.Volume = 0;
+                            soundEffectInstance.Volume = 0;
                         break;
 
                 }
