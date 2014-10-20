@@ -16,6 +16,14 @@
     "@" is received, all input should be ignored until a "~" is received.
  */
 
+// Set this to true to enable automatic calibration of the laser at startup.
+// Requires that the lasers are powered by the circuit board so they can be turned
+// on and off.
+const boolean autoCalibration = false;
+
+// Default threshold if autocalibration is off.
+const int defaultThreshold = 100;
+
 // These constants won't change.  They're used to give names
 // to the pins used:
 const int analogInPin = A0;  // Analog input pin that the potentiometer is attached to
@@ -34,7 +42,7 @@ const int laserPin = 10;
 const int inputCount = 8;  // Number of inputs we are reading. Can be up to 16.
 
 // Thresholds for input on each pin. >= this value is ON, < this value is OFF.
-// These are set in the power-on calibration routine.
+// These are set in the power-on calibration routine, or set to defaultThreshold.
 int thresholds[inputCount];
 
 // Values during calibration.
@@ -229,6 +237,13 @@ void calibrate()
   Serial.println("~");  // Transition back to output data.
 }
 
+void setManualThresholds()
+{
+  for (int i = 0; i < inputCount; ++i) {
+    thresholds[i] = defaultThreshold;
+  }
+}
+
 void setup() {
   // initialize serial communications at 57600 bps:
   Serial.begin(57600); 
@@ -242,7 +257,12 @@ void setup() {
   pinMode(laserPin, OUTPUT);
   
   setLedMode(LED_ON, 0);
-  calibrate();
+  
+  if (autoCalibration)
+      calibrate();
+  else
+      setManualThresholds();
+      
   setLasers(true);
 }
 
