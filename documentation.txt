@@ -1,0 +1,51 @@
+Laser Harp software.
+
+In the Arduino directory are two Arduino sketches.
+
+RawInput:
+  This sketch just displays the raw input from all the photo resistors over the
+  COM port. Values are from 0 to 1023, where 0 is complete darkness and 1023 is 
+  the brightest that the sensor will report. Use the Arduino Serial Monitor to 
+  view the output.
+
+LaserHarpMultiplex:
+  This is the main version that outputs on/off inputs for all the photo
+  resistors. The serial protocol is documented in the comments. It includes
+  auto-calibration, which is turned on or off via a constance in the code.
+  If auto-calibration is on, then when the Arduino is powered, or the reset
+  button is pressed, it automatically calibrates the photo resistor by
+  turning the laser on, monitoring the photo-resistor values, turning the laser
+  off, and monitoring the photo-resistor values. The threshold is set 
+  half-way between. If the on and off values aren't similar enough, the sensor 
+  is considered in error and will not report results. Calibration results
+  can be viewed in Serial Monitor.
+
+  The LED shows status as follows:
+    Solid on: everything working.
+	Slow blink: calibration in progress.
+	Fast blink -- blinks the number of the lowest sensor that is in error.
+	  I.e., 3 blinks means sensor 3 could not be calibrated.
+
+
+In the Windows directory is the Windows code that reads the output from 
+LaserHarpMultiplex and plays notes. It reads all the .WAV files that are in the
+directory of the executable, or a folder there in. If you place more files, you
+can hit the "Refresh" button to re-read the files.
+
+While running, the program will respond to both the Serial Port input from the 
+Arduino, or the number keys 1-8. 
+
+There are currently four play modes supported. These are to experiment with
+different approaches. 
+
+Once Full -- Plays the sound when the laser goes off, all the way to the end. 
+             Ignore laser on events. Can support multiple simultaneous playing o
+			 of the same note.
+Once On/Off - plays the sound when the laser goes off, stops when the laser goes
+              on or the sound ends.
+Looping     - plays the sound when the laser goes off, stops when the laser goes
+              on. loops the sound if needed.
+Continuous Loop - similar to looping, but keeps the loop going (but silent) when 
+                  laser is on. Starts the sound wherever it is in the loop. If
+				  all sounds are the same length, the loops should remain
+				  synchronized.
