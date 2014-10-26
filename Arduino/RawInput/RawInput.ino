@@ -42,11 +42,12 @@ void loop() {
         int value = multiplexedAnalogRead(i);
         
         
-        Serial.print(i);
+        Serial.print(i+1);
         Serial.print(": ");
         Serial.println(value);
     }  
+    Serial.println();
 
     // wait 3 seconds before the next loop
-    delay(3000);                     
+    delay(500);                     
 }

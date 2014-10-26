@@ -19,7 +19,7 @@
 // Set this to true to enable automatic calibration of the laser at startup.
 // Requires that the lasers are powered by the circuit board so they can be turned
 // on and off.
-const boolean autoCalibration = false;
+const boolean autoCalibration = true;
 
 // Default threshold if autocalibration is off.
 const int defaultThreshold = 100;
