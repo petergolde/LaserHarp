@@ -4,16 +4,20 @@
   Monitors the inputs of 8 photoresistors that detect lasers, multiplexed via
   a 74HC5067 IC and read by the Arduino analog input.
   
-  Sends output via serial with the following format:
-    57600 baud, 8 data bits, 1 stop.
-    
-    Sends "~" to start, indicating that data follows.
-    While monitoring, sends "~" character every second as a heartbeat.
-    Sends character "A" - "H" when laser beam is interrupted. (Note ON)
-    Sends character "a" - "h" when laser beam is restored. (Note OFF)
-    
-    Sends character "@" to indicate that debugging information is being output. After
-    "@" is received, all input should be ignored until a "~" is received.
+  Sends output via MIDI USB. Requires Arduino Leonardo with the
+  TeeOnArdu extensions.
+  
+  First, make sure you are running Arduino 1.0.5 software.
+  Next, install Teensy extensions from https://www.pjrc.com/teensy/td_download.html
+  Then, visit https://github.com/fricklr/TeeOnArdu and download and install the
+  TeeOnArdu extensions. 
+  
+  You will then need to update your bootloader on your Leonardo. Once this is done,
+  you can upload this code.
+   
+  You must select "MIDI" as the USB type in the Tools menu. To upload to the Leonardo,
+  hold done the reset button, click download, then release the reset button when the
+  Arduino IDE says "Uploading".
  */
 
 // Set this to true to enable automatic calibration of the laser at startup.
@@ -40,6 +44,10 @@ const int ledPin = 9;
 const int laserPin = 10;
 
 const int inputCount = 8;  // Number of inputs we are reading. Can be up to 16.
+
+const int midiChannel = 1;  // MIDI channel we are using.
+int midiNotes[] = { 60, 62, 64, 65, 67, 69, 71 };  // C-major scale
+const int midiOctaveIncrease = 12;  // Number of MIDI notes to increase per octave.
 
 // Thresholds for input on each pin. >= this value is ON, < this value is OFF.
 // These are set in the power-on calibration routine, or set to defaultThreshold.
@@ -266,19 +274,13 @@ void setup() {
   setLasers(true);
 }
 
-const long heartbeat = 1000;  // milliseconds between heartbeats.
-
-long lastTimeHeartbeat, currentTime;
+long currentTime;
 
 void loop() {
     
     updateLed();
     
     currentTime = millis();
-    if (currentTime - lastTimeHeartbeat > heartbeat) {
-      lastTimeHeartbeat = currentTime;
-      Serial.println("~");
-    }
 
     for (int i = 0; i < inputCount; ++i) {
         // Ignore inputs that failed calibration.
@@ -293,11 +295,12 @@ void loop() {
         
         // If different than last value, send notification.
         if (newInput != current[i]) {
+            int midiNote = midiNotes[i % 7] + midiOctaveIncrease * (i / 7);
             if (newInput)
-              Serial.write('a' + i); // HIGH means laser detected -> interruption OFF
+              usbMIDI.sendNoteOff(midiNote, 127, midiChannel); // HIGH means laser detected -> note OFF
             else
-              Serial.write('A' + i); // LOW means laser not detected -> interruption ON
-         }
+              usbMIDI.sendNoteOn(midiNote, 0, midiChannel); // LOW means laser not detected -> note ON
+        }
         current[i] = newInput;
     }  
 
